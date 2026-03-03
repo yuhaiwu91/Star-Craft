@@ -45,12 +45,14 @@ export default function App() {
   const gameStateRef = useRef('menu');
 
   // React state 只用于 UI 渲染
-  const [gameState,  setGameStateUI]  = useState('menu');
+  const [gameState,  setGameStateUI]  = useState('loading');
+  const [loadedCount, setLoadedCount] = useState(0);
   const [uiScore,    setUiScore]      = useState(0);
   const [uiLevel,    setUiLevel]      = useState(1);
   const [uiLives,    setUiLives]      = useState(3);
   const [uiAchievements, setUiAchievements] = useState([]);
   const [newAchievement, setNewAchievement] = useState(null);
+  const TOTAL_IMAGES = 7;
 
   // 切换 gameState 同时更新 ref
   const setGameState = (s) => {
@@ -94,11 +96,20 @@ export default function App() {
     animId: null,
   });
 
-  // ─── 预加载图片（只跑一次）───────────────────────────────────
+  // ─── 预加载图片（并行，完成后才进入 menu）────────────────────
   useEffect(() => {
-    ['battleplane1','battleplane2','battleplane3','battleplane4',
-     'enemyplane1','enemyplane2','enemyplane3'].forEach(name => {
+    const names = [
+      'battleplane1','battleplane2','battleplane3','battleplane4',
+      'enemyplane1','enemyplane2','enemyplane3'
+    ];
+    let done = 0;
+    names.forEach(name => {
       const img = new Image();
+      img.onload = img.onerror = () => {
+        done++;
+        setLoadedCount(done);
+        if (done === names.length) setGameState('menu');
+      };
       img.src = `/${name}.png`;
       g.current.images[name] = img;
     });
@@ -507,6 +518,26 @@ export default function App() {
             }} />
         ))}
       </div>
+
+      {/* ══ 加载界面 ════════════════════════════════════════════ */}
+      {gameState === 'loading' && (
+        <div className="relative z-10 flex flex-col items-center justify-center h-full gap-8">
+          <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 tracking-widest">
+            星际先锋
+          </h1>
+          <div className="flex flex-col items-center gap-3 w-64">
+            <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden border border-white/20">
+              <div
+                className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full transition-all duration-300"
+                style={{ width: `${(loadedCount / TOTAL_IMAGES) * 100}%` }}
+              />
+            </div>
+            <p className="text-cyan-300 text-sm tracking-widest">
+              资源加载中 {loadedCount} / {TOTAL_IMAGES}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ══ 主菜单 ══════════════════════════════════════════════ */}
       {gameState === 'menu' && (
