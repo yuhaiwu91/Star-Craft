@@ -1,266 +1,188 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// 战机配置
+// ─── 常量配置 ───────────────────────────────────────────────
 const BATTLEPLANES = {
   battleplane1: {
-    name: '蓝隼-Alpha',
-    subtitle: '新手标准型 / 均衡基础机',
-    attack: 45,
-    health: 60,
-    bulletType: 'double',
-    description: '流线型机身、双侧推进器、标准能量核心',
+    name: '蓝隼-Alpha', subtitle: '新手标准型 / 均衡基础机',
+    attack: 45, health: 60, bulletType: 'double',
     features: ['稳定输出', '容错率高', '适合前期关卡']
   },
   battleplane2: {
-    name: '苍雷-β',
-    subtitle: '高爆发穿透型',
-    attack: 70,
-    health: 45,
-    bulletType: 'pierce',
-    description: '机翼更宽，核心发光明显',
+    name: '苍雷-β', subtitle: '高爆发穿透型',
+    attack: 70, health: 45, bulletType: 'pierce',
     features: ['适合密集敌群', '站位要求高', '不适合近距离硬扛']
   },
   battleplane3: {
-    name: '星穹-γ',
-    subtitle: '范围清场型',
-    attack: 40,
-    health: 55,
-    bulletType: 'spread',
-    description: '侧翼展开式设计，动力核心更大',
+    name: '星穹-γ', subtitle: '范围清场型',
+    attack: 40, health: 55, bulletType: 'spread',
     features: ['覆盖范围广', '单体爆发较弱', '适合小怪波段']
   },
   battleplane4: {
-    name: '天穹-Ω',
-    subtitle: '终极均衡强化型',
-    attack: 65,
-    health: 75,
-    bulletType: 'homing',
-    description: '最厚重机体，核心三段发光',
+    name: '天穹-Ω', subtitle: '终极均衡强化型',
+    attack: 65, health: 75, bulletType: 'homing',
     features: ['操作难度最低', '适合Boss战', '综合性能最强']
   }
 };
 
-// 敌机配置
-const ENEMY_TYPES = {
-  basic: { health: 30, speed: 2, score: 10, image: 'enemyplane1.png' },
-  fast: { health: 20, speed: 4, score: 15, image: 'enemyplane2.png' },
-  heavy: { health: 60, speed: 1, score: 25, image: 'enemyplane3.png' }
+const ENEMY_CONFIGS = {
+  basic: { health: 30, speed: 2, score: 10, image: 'enemyplane1', width: 50, height: 50 },
+  fast:  { health: 20, speed: 4, score: 15, image: 'enemyplane2', width: 44, height: 44 },
+  heavy: { health: 80, speed: 1, score: 30, image: 'enemyplane3', width: 60, height: 60 },
 };
 
-// 成就配置
-const ACHIEVEMENTS = [
-  { id: 'firstBlood', name: '第一滴血', description: '击败第一个敌人', condition: (stats) => stats.kills >= 1 },
-  { id: 'survivor', name: '生存者', description: '存活超过3分钟', condition: (stats) => stats.survivalTime >= 180 },
-  { id: 'sharpshooter', name: '神枪手', description: '击败50个敌人', condition: (stats) => stats.kills >= 50 },
-  { id: 'invincible', name: '无敌', description: '不受伤通过第3关', condition: (stats) => stats.level >= 3 && stats.damageTaken === 0 },
-  { id: 'collector', name: '收藏家', description: '收集10个道具', condition: (stats) => stats.itemsCollected >= 10 }
+const ACHIEVEMENTS_DEF = [
+  { id: 'firstBlood',   name: '第一滴血', description: '击败第一个敌人',     check: (g) => g.kills >= 1 },
+  { id: 'survivor',     name: '生存者',   description: '存活超过3分钟',       check: (g) => g.survivalSec >= 180 },
+  { id: 'sharpshooter', name: '神枪手',   description: '累计击败50个敌人',    check: (g) => g.kills >= 50 },
+  { id: 'untouched',    name: '无懈可击', description: '不受伤通关第3关',     check: (g) => g.level >= 3 && g.damageTaken === 0 },
+  { id: 'collector',    name: '收藏家',   description: '收集10个道具',        check: (g) => g.itemsCollected >= 10 },
 ];
 
-function App() {
-  const canvasRef = useRef(null);
-  const [gameState, setGameState] = useState('menu'); // menu, playing, paused, gameover
-  const [selectedPlane, setSelectedPlane] = useState(null);
-  const [score, setScore] = useState(0);
-  const [level, setLevel] = useState(1);
-  const [lives, setLives] = useState(3);
-  const [achievements, setAchievements] = useState([]);
-  const [stats, setStats] = useState({
-    kills: 0,
-    survivalTime: 0,
-    damageTaken: 0,
-    itemsCollected: 0,
-    level: 1
-  });
+// ─── 主组件 ──────────────────────────────────────────────────
+export default function App() {
+  const canvasRef   = useRef(null);
+  // gameStateRef 用于在 rAF 回调中读取最新状态（无 stale closure）
+  const gameStateRef = useRef('menu');
 
-  const gameRef = useRef({
+  // React state 只用于 UI 渲染
+  const [gameState,  setGameStateUI]  = useState('menu');
+  const [uiScore,    setUiScore]      = useState(0);
+  const [uiLevel,    setUiLevel]      = useState(1);
+  const [uiLives,    setUiLives]      = useState(3);
+  const [uiAchievements, setUiAchievements] = useState([]);
+  const [newAchievement, setNewAchievement] = useState(null);
+
+  // 切换 gameState 同时更新 ref
+  const setGameState = (s) => {
+    gameStateRef.current = typeof s === 'function' ? s(gameStateRef.current) : s;
+    setGameStateUI(gameStateRef.current);
+  };
+
+  // ── 全部游戏数据都在这个 ref 里，不触发重渲 ──
+  const g = useRef({
+    // 图片
+    images: {},
+    // 玩家
     player: null,
+    selectedPlane: null,
+    // 游戏对象
     enemies: [],
     bullets: [],
     items: [],
+    particles: [],
+    // 输入
     keys: {},
-    lastTime: 0,
+    touchTarget: null,
+    // 计时
     startTime: 0,
+    lastTime: 0,
+    lastSpawn: 0,
+    lastAutoShot: 0,
+    // 统计（写在 ref 里，按需同步到 React state）
+    score: 0,
+    level: 1,
+    lives: 3,
+    kills: 0,
+    survivalSec: 0,
+    damageTaken: 0,
+    itemsCollected: 0,
+    // 状态标志
     invincible: false,
     invincibleTime: 0,
     shield: false,
-    images: {}
+    achievements: [],       // 已解锁 id 集合
+    animId: null,
   });
 
-  // 加载图片
+  // ─── 预加载图片（只跑一次）───────────────────────────────────
   useEffect(() => {
-    const loadImages = async () => {
-      const imageNames = [
-        'battleplane1', 'battleplane2', 'battleplane3', 'battleplane4',
-        'enemyplane1', 'enemyplane2', 'enemyplane3'
-      ];
-
-      for (const name of imageNames) {
-        const img = new Image();
-        img.src = `/${name}.png`;
-        await new Promise((resolve) => {
-          img.onload = resolve;
-        });
-        gameRef.current.images[name] = img;
-      }
-    };
-
-    loadImages();
+    ['battleplane1','battleplane2','battleplane3','battleplane4',
+     'enemyplane1','enemyplane2','enemyplane3'].forEach(name => {
+      const img = new Image();
+      img.src = `/${name}.png`;
+      g.current.images[name] = img;
+    });
   }, []);
 
-  // 键盘事件
+  // ─── 键盘 & 触摸事件（只注册一次）───────────────────────────
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      gameRef.current.keys[e.key] = true;
-      if (e.key === ' ' && gameState === 'playing') {
-        e.preventDefault();
-        const { player, bullets } = gameRef.current;
-        if (!player) return;
-
-        const now = Date.now();
-        if (now - (player.lastShot || 0) < 200) return;
-        player.lastShot = now;
-
-        switch (player.bulletType) {
-          case 'double':
-            bullets.push(
-              { x: player.x - 15, y: player.y, width: 4, height: 15, speed: 8, damage: player.attack },
-              { x: player.x + 15, y: player.y, width: 4, height: 15, speed: 8, damage: player.attack }
-            );
-            break;
-          case 'pierce':
-            bullets.push({ x: player.x, y: player.y, width: 6, height: 20, speed: 10, damage: player.attack, pierce: true });
-            break;
-          case 'spread':
-            bullets.push(
-              { x: player.x - 20, y: player.y, width: 4, height: 12, speed: 7, damage: player.attack, angle: -0.3 },
-              { x: player.x, y: player.y, width: 4, height: 12, speed: 7, damage: player.attack, angle: 0 },
-              { x: player.x + 20, y: player.y, width: 4, height: 12, speed: 7, damage: player.attack, angle: 0.3 }
-            );
-            break;
-          case 'homing':
-            bullets.push({ x: player.x, y: player.y, width: 5, height: 15, speed: 6, damage: player.attack, homing: true });
-            break;
-        }
-      }
-      if (e.key === 'p' || e.key === 'P') {
-        setGameState(prev => prev === 'playing' ? 'paused' : 'playing');
-      }
+    const down = (e) => {
+      g.current.keys[e.key] = true;
+      if (e.key === ' ') { e.preventDefault(); fireBullet(); }
+      if (e.key === 'p' || e.key === 'P') togglePause();
     };
+    const up = (e) => { g.current.keys[e.key] = false; };
 
-    const handleKeyUp = (e) => {
-      gameRef.current.keys[e.key] = false;
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup',   up);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup',   up);
     };
-  }, [gameState]);
+  }, []); // 空依赖——永不重新绑定
 
-  // 生成敌机
-  const spawnEnemy = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  // ─── 辅助：发射子弹 ──────────────────────────────────────────
+  const fireBullet = () => {
+    const { player, bullets } = g.current;
+    if (!player) return;
+    const now = Date.now();
+    if (now - (player.lastShot || 0) < 180) return;
+    player.lastShot = now;
 
-    const types = ['basic', 'fast', 'heavy'];
-    const weights = [0.6, 0.3, 0.1];
-    const rand = Math.random();
-    let type = 'basic';
-    let sum = 0;
-    for (let i = 0; i < types.length; i++) {
-      sum += weights[i];
-      if (rand < sum) {
-        type = types[i];
+    const atk = player.attack;
+    const cx = player.x, cy = player.y - player.height / 2;
+    switch (player.bulletType) {
+      case 'double':
+        bullets.push(
+          { x: cx - 14, y: cy, w: 4, h: 16, vy: -10, damage: atk, color: '#00eeff' },
+          { x: cx + 14, y: cy, w: 4, h: 16, vy: -10, damage: atk, color: '#00eeff' }
+        ); break;
+      case 'pierce':
+        bullets.push({ x: cx, y: cy, w: 6, h: 22, vy: -12, damage: atk, pierce: true, color: '#ff6600' });
         break;
-      }
+      case 'spread':
+        [-0.35, 0, 0.35].forEach(angle =>
+          bullets.push({ x: cx + Math.sin(angle) * 20, y: cy, w: 4, h: 14, vy: -9, vx: Math.sin(angle) * 3, damage: atk, color: '#aa00ff' })
+        ); break;
+      case 'homing':
+        bullets.push({ x: cx, y: cy, w: 5, h: 16, vy: -7, damage: atk, homing: true, color: '#ffdd00' });
+        break;
     }
-
-    const config = ENEMY_TYPES[type];
-    gameRef.current.enemies.push({
-      x: Math.random() * (canvas.width - 50),
-      y: -50,
-      width: 50,
-      height: 50,
-      speed: config.speed + level * 0.2,
-      health: config.health,
-      maxHealth: config.health,
-      score: config.score,
-      type: type,
-      image: config.image
-    });
   };
 
-  // 生成道具
-  const spawnItem = (x, y) => {
-    const types = ['tripleShot', 'shield'];
-    const type = types[Math.floor(Math.random() * types.length)];
-    gameRef.current.items.push({
-      x, y,
-      width: 30,
-      height: 30,
-      speed: 2,
-      type
-    });
+  // ─── 辅助：切换暂停 ──────────────────────────────────────────
+  const togglePause = () => {
+    if (gameStateRef.current === 'playing') setGameState('paused');
+    else if (gameStateRef.current === 'paused') setGameState('playing');
   };
 
-  // 碰撞检测
-  const checkCollision = (a, b) => {
-    return a.x < b.x + b.width &&
-           a.x + a.width > b.x &&
-           a.y < b.y + b.height &&
-           a.y + a.height > b.y;
-  };
-
-  // 开始游戏
+  // ─── 开始游戏（不访问 canvas！）──────────────────────────────
   const startGame = (planeKey) => {
-    setSelectedPlane(planeKey);
-    setGameState('playing');
-    setScore(0);
-    setLevel(1);
-    setLives(3);
-    setAchievements([]);
-    setStats({
-      kills: 0,
-      survivalTime: 0,
-      damageTaken: 0,
-      itemsCollected: 0,
-      level: 1
-    });
+    if (g.current.animId) cancelAnimationFrame(g.current.animId);
 
-    const canvas = canvasRef.current;
-    const planeConfig = BATTLEPLANES[planeKey];
-
-    gameRef.current = {
-      ...gameRef.current,
-      player: {
-        x: canvas.width / 2,
-        y: canvas.height - 100,
-        width: 60,
-        height: 60,
-        speed: 5,
-        health: planeConfig.health,
-        maxHealth: planeConfig.health,
-        attack: planeConfig.attack,
-        bulletType: planeConfig.bulletType,
-        image: planeKey
-      },
-      enemies: [],
-      bullets: [],
-      items: [],
-      keys: {},
-      lastTime: Date.now(),
-      startTime: Date.now(),
-      invincible: false,
-      invincibleTime: 0,
-      shield: false,
-      lastSpawn: 0
+    const cfg = BATTLEPLANES[planeKey];
+    // 重置全部游戏数据，保留 images
+    const images = g.current.images;
+    g.current = {
+      images,
+      player: null,          // 等 canvas 就绪后再初始化
+      selectedPlane: planeKey,
+      enemies: [], bullets: [], items: [], particles: [],
+      keys: {}, touchTarget: null,
+      startTime: Date.now(), lastTime: Date.now(),
+      lastSpawn: 0, lastAutoShot: 0,
+      score: 0, level: 1, lives: 3,
+      kills: 0, survivalSec: 0, damageTaken: 0, itemsCollected: 0,
+      invincible: false, invincibleTime: 0, shield: false,
+      achievements: [], animId: null,
+      // 保存战机配置，供 canvas ready 时用
+      _planeCfg: cfg,
     };
+    setUiScore(0); setUiLevel(1); setUiLives(3); setUiAchievements([]);
+    setGameState('playing');  // 触发 React 渲染 canvas
   };
 
-  // 游戏循环
+  // ─── 游戏主循环（只依赖 gameState）─────────────────────────
   useEffect(() => {
     if (gameState !== 'playing') return;
 
@@ -268,332 +190,427 @@ function App() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
-    let animationId;
-    const gameLoop = () => {
+    // ★ 在这里初始化玩家（canvas 已挂载，宽高已知）
+    if (!g.current.player && g.current.selectedPlane) {
+      const cfg = g.current._planeCfg;
+      g.current.player = {
+        x: canvas.width / 2,
+        y: canvas.height - 90,
+        width: 60, height: 60,
+        speed: 5,
+        health: cfg.health, maxHealth: cfg.health,
+        attack: cfg.attack, bulletType: cfg.bulletType,
+        image: g.current.selectedPlane,
+        lastShot: 0,
+      };
+    }
+
+    // 记录本次 effect 启动时的 rAF id，用于清理
+    let localAnimId = null;
+
+    const loop = () => {
+      // 若已不在 playing 状态，停止循环
+      if (gameStateRef.current !== 'playing') return;
+
       const now = Date.now();
-      const deltaTime = now - gameRef.current.lastTime;
-      gameRef.current.lastTime = now;
+      const W = canvas.width, H = canvas.height;
+      const data = g.current;
 
-      // 更新生存时间
-      const survivalTime = Math.floor((now - gameRef.current.startTime) / 1000);
-      setStats(prev => ({ ...prev, survivalTime }));
+      // ── 背景 ──────────────────────────────────────────────
+      ctx.fillStyle = '#050a1a';
+      ctx.fillRect(0, 0, W, H);
+      // 星点
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      for (let s = 0; s < 3; s++) {
+        const sx = (now * (0.02 + s * 0.01) * (s + 1) * 137.5) % W;
+        const sy = (now * (0.01 + s * 0.005) * (s + 1) * 97.3) % H;
+        ctx.fillRect(sx | 0, sy | 0, 1, 1);
+      }
 
-      // 清空画布
-      ctx.fillStyle = '#0a0e27';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const { player, enemies, bullets, items, particles, keys } = data;
 
-      const { player, enemies, bullets, items, keys } = gameRef.current;
-
-      // 移动玩家
+      // ── 移动玩家 ──────────────────────────────────────────
       if (player) {
-        if (keys['ArrowLeft'] || keys['a'] || keys['A']) player.x -= player.speed;
+        if (keys['ArrowLeft']  || keys['a'] || keys['A']) player.x -= player.speed;
         if (keys['ArrowRight'] || keys['d'] || keys['D']) player.x += player.speed;
-        if (keys['ArrowUp'] || keys['w'] || keys['W']) player.y -= player.speed;
-        if (keys['ArrowDown'] || keys['s'] || keys['S']) player.y += player.speed;
+        if (keys['ArrowUp']    || keys['w'] || keys['W']) player.y -= player.speed;
+        if (keys['ArrowDown']  || keys['s'] || keys['S']) player.y += player.speed;
+        // 触摸跟随
+        if (data.touchTarget) {
+          const dx = data.touchTarget.x - player.x, dy = data.touchTarget.y - player.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 4) { player.x += dx / dist * player.speed; player.y += dy / dist * player.speed; }
+        }
+        player.x = Math.max(player.width/2, Math.min(W - player.width/2, player.x));
+        player.y = Math.max(player.height/2, Math.min(H - player.height/2, player.y));
 
-        player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
-        player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+        // 自动射击（触摸模式 or 持续按空格）
+        if (now - data.lastAutoShot > 200 && (data.touchTarget || keys[' '])) {
+          data.lastAutoShot = now;
+          fireBullet();
+        }
 
         // 绘制玩家
-        if (gameRef.current.images[player.image]) {
-          if (gameRef.current.invincible && Math.floor(now / 100) % 2 === 0) {
-            ctx.globalAlpha = 0.5;
+        const blink = data.invincible && Math.floor(now / 120) % 2 === 0;
+        if (!blink) {
+          const img = data.images[player.image];
+          if (img && img.complete) {
+            ctx.save();
+            ctx.shadowBlur = 18; ctx.shadowColor = '#4488ff';
+            ctx.drawImage(img, player.x - player.width/2, player.y - player.height/2, player.width, player.height);
+            ctx.restore();
           }
-          ctx.drawImage(gameRef.current.images[player.image], player.x - player.width/2, player.y - player.height/2, player.width, player.height);
-          ctx.globalAlpha = 1;
         }
-
-        // 绘制血条
-        ctx.fillStyle = '#ff0000';
-        ctx.fillRect(player.x - player.width/2, player.y - player.height/2 - 10, player.width, 4);
-        ctx.fillStyle = '#00ff00';
-        ctx.fillRect(player.x - player.width/2, player.y - player.height/2 - 10, player.width * (player.health / player.maxHealth), 4);
+        // 护盾圆圈
+        if (data.shield) {
+          ctx.save();
+          ctx.strokeStyle = '#00ffee'; ctx.lineWidth = 2;
+          ctx.shadowBlur = 12; ctx.shadowColor = '#00ffee';
+          ctx.beginPath(); ctx.arc(player.x, player.y, player.width * 0.7, 0, Math.PI*2); ctx.stroke();
+          ctx.restore();
+        }
+        // 血条
+        const bx = player.x - player.width/2, by = player.y + player.height/2 + 4;
+        ctx.fillStyle = '#333'; ctx.fillRect(bx, by, player.width, 4);
+        ctx.fillStyle = player.health > player.maxHealth*0.5 ? '#00ff88' : '#ff4444';
+        ctx.fillRect(bx, by, player.width * (player.health / player.maxHealth), 4);
       }
 
-      // 更新和绘制子弹
+      // ── 子弹移动 & 绘制 ───────────────────────────────────
       for (let i = bullets.length - 1; i >= 0; i--) {
-        const bullet = bullets[i];
-
-        if (bullet.homing && enemies.length > 0) {
-          const nearest = enemies.reduce((closest, enemy) => {
-            const dist = Math.hypot(enemy.x - bullet.x, enemy.y - bullet.y);
-            return dist < closest.dist ? { enemy, dist } : closest;
-          }, { dist: Infinity }).enemy;
-
+        const b = bullets[i];
+        // 追踪弹
+        if (b.homing && enemies.length > 0) {
+          let nearest = null, minD = Infinity;
+          enemies.forEach(e => { const d = Math.hypot(e.x-b.x, e.y-b.y); if(d<minD){minD=d;nearest=e;} });
           if (nearest) {
-            const angle = Math.atan2(nearest.y - bullet.y, nearest.x - bullet.x);
-            bullet.x += Math.cos(angle) * bullet.speed;
-            bullet.y += Math.sin(angle) * bullet.speed;
+            const ang = Math.atan2(nearest.y - b.y, nearest.x - b.x);
+            b.vx = (b.vx || 0) * 0.8 + Math.cos(ang) * 7 * 0.2;
+            b.vy = (b.vy || -7) * 0.8 + Math.sin(ang) * 7 * 0.2;
           }
-        } else if (bullet.angle !== undefined) {
-          bullet.x += Math.sin(bullet.angle) * bullet.speed;
-          bullet.y -= bullet.speed;
-        } else {
-          bullet.y -= bullet.speed;
         }
-
-        if (bullet.y < -20) {
-          bullets.splice(i, 1);
-          continue;
-        }
-
-        ctx.fillStyle = '#00ffff';
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#00ffff';
-        ctx.fillRect(bullet.x - bullet.width/2, bullet.y - bullet.height/2, bullet.width, bullet.height);
-        ctx.shadowBlur = 0;
+        b.x += (b.vx || 0); b.y += b.vy;
+        if (b.y < -30 || b.y > H+10 || b.x < -10 || b.x > W+10) { bullets.splice(i, 1); continue; }
+        ctx.save();
+        ctx.fillStyle = b.color || '#00eeff';
+        ctx.shadowBlur = 8; ctx.shadowColor = b.color || '#00eeff';
+        ctx.fillRect(b.x - b.w/2, b.y - b.h/2, b.w, b.h);
+        ctx.restore();
       }
 
-      // 生成敌机
-      if (now - gameRef.current.lastSpawn > 2000 - level * 100) {
-        spawnEnemy();
-        gameRef.current.lastSpawn = now;
+      // ── 生成敌机 ──────────────────────────────────────────
+      const spawnInterval = Math.max(600, 2000 - data.level * 120);
+      if (now - data.lastSpawn > spawnInterval) {
+        data.lastSpawn = now;
+        const rand = Math.random();
+        const type = rand < 0.6 ? 'basic' : rand < 0.85 ? 'fast' : 'heavy';
+        const cfg  = ENEMY_CONFIGS[type];
+        enemies.push({
+          x: cfg.width/2 + Math.random() * (W - cfg.width),
+          y: -cfg.height,
+          width: cfg.width, height: cfg.height,
+          speed: cfg.speed + data.level * 0.15,
+          health: cfg.health + data.level * 5,
+          maxHealth: cfg.health + data.level * 5,
+          score: cfg.score,
+          type, image: cfg.image,
+        });
       }
 
-      // 更新和绘制敌机
+      // ── 敌机移动、碰撞、绘制 ─────────────────────────────
       for (let i = enemies.length - 1; i >= 0; i--) {
-        const enemy = enemies[i];
-        enemy.y += enemy.speed;
+        const en = enemies[i];
+        en.y += en.speed;
 
-        if (enemy.y > canvas.height) {
+        if (en.y - en.height/2 > H) {
           enemies.splice(i, 1);
-          setScore(prev => Math.max(0, prev - 5));
+          data.score = Math.max(0, data.score - 5);
+          setUiScore(data.score);
           continue;
         }
 
-        // 绘制敌机
-        if (gameRef.current.images[enemy.image]) {
-          ctx.drawImage(gameRef.current.images[enemy.image], enemy.x - enemy.width/2, enemy.y - enemy.height/2, enemy.width, enemy.height);
-        }
-
-        // 绘制血条
-        ctx.fillStyle = '#ff0000';
-        ctx.fillRect(enemy.x - enemy.width/2, enemy.y - enemy.height/2 - 10, enemy.width, 4);
-        ctx.fillStyle = '#00ff00';
-        ctx.fillRect(enemy.x - enemy.width/2, enemy.y - enemy.height/2 - 10, enemy.width * (enemy.health / enemy.maxHealth), 4);
-
-        // 子弹碰撞
+        // 子弹 vs 敌机
+        let killed = false;
         for (let j = bullets.length - 1; j >= 0; j--) {
-          const bullet = bullets[j];
-          if (checkCollision(bullet, enemy)) {
-            enemy.health -= bullet.damage;
-            if (!bullet.pierce) {
-              bullets.splice(j, 1);
-            }
-
-            if (enemy.health <= 0) {
+          const b = bullets[j];
+          if (rectsOverlap(b.x-b.w/2, b.y-b.h/2, b.w, b.h, en.x-en.width/2, en.y-en.height/2, en.width, en.height)) {
+            en.health -= b.damage;
+            if (!b.pierce) bullets.splice(j, 1);
+            if (en.health <= 0) {
+              spawnParticles(particles, en.x, en.y, en.type);
+              if (Math.random() < 0.22) spawnItem(items, en.x, en.y);
+              data.score += en.score;
+              data.kills++;
+              setUiScore(data.score);
               enemies.splice(i, 1);
-              setScore(prev => prev + enemy.score);
-              setStats(prev => ({ ...prev, kills: prev.kills + 1 }));
-
-              if (Math.random() < 0.2) {
-                spawnItem(enemy.x, enemy.y);
-              }
+              killed = true;
+              // 检查成就
+              checkAchievements(data, setUiAchievements, setNewAchievement);
               break;
             }
           }
         }
+        if (killed) continue;
 
-        // 玩家碰撞
-        if (player && checkCollision(player, enemy)) {
-          if (gameRef.current.shield) {
-            gameRef.current.shield = false;
-            enemies.splice(i, 1);
-          } else if (!gameRef.current.invincible) {
+        // 玩家 vs 敌机
+        if (player && rectsOverlap(
+          player.x - player.width/2, player.y - player.height/2, player.width, player.height,
+          en.x - en.width/2, en.y - en.height/2, en.width, en.height
+        )) {
+          if (data.shield) {
+            data.shield = false;
+            spawnParticles(particles, en.x, en.y, en.type);
+            enemies.splice(i, 1); continue;
+          }
+          if (!data.invincible) {
             player.health -= 20;
-            setStats(prev => ({ ...prev, damageTaken: prev.damageTaken + 20 }));
-            gameRef.current.invincible = true;
-            gameRef.current.invincibleTime = now;
+            data.damageTaken += 20;
+            data.invincible = true;
+            data.invincibleTime = now;
             enemies.splice(i, 1);
-
             if (player.health <= 0) {
-              setLives(prev => {
-                const newLives = prev - 1;
-                if (newLives <= 0) {
-                  setGameState('gameover');
-                } else {
-                  player.health = player.maxHealth;
-                }
-                return newLives;
-              });
+              data.lives--;
+              setUiLives(data.lives);
+              if (data.lives <= 0) { setGameState('gameover'); return; }
+              player.health = player.maxHealth;
             }
+            continue;
           }
         }
+
+        // 绘制敌机
+        const eimg = data.images[en.image];
+        if (eimg && eimg.complete) {
+          ctx.save();
+          ctx.shadowBlur = en.type === 'heavy' ? 20 : 10;
+          ctx.shadowColor = en.type === 'heavy' ? '#ff4400' : en.type === 'fast' ? '#ff00ff' : '#ff2200';
+          ctx.drawImage(eimg, en.x - en.width/2, en.y - en.height/2, en.width, en.height);
+          ctx.restore();
+        }
+        // 血条
+        const ex = en.x - en.width/2, ey = en.y - en.height/2 - 7;
+        ctx.fillStyle = '#550000'; ctx.fillRect(ex, ey, en.width, 3);
+        ctx.fillStyle = '#ff3300';
+        ctx.fillRect(ex, ey, en.width * (en.health / en.maxHealth), 3);
       }
 
-      // 更新无敌时间
-      if (gameRef.current.invincible && now - gameRef.current.invincibleTime > 2000) {
-        gameRef.current.invincible = false;
-      }
+      // ── 无敌计时 ──────────────────────────────────────────
+      if (data.invincible && now - data.invincibleTime > 2000) data.invincible = false;
 
-      // 更新和绘制道具
+      // ── 道具移动 & 拾取 & 绘制 ───────────────────────────
       for (let i = items.length - 1; i >= 0; i--) {
-        const item = items[i];
-        item.y += item.speed;
+        const it = items[i];
+        it.y += 2;
+        if (it.y > H + 20) { items.splice(i, 1); continue; }
 
-        if (item.y > canvas.height) {
+        if (player && rectsOverlap(
+          player.x - player.width/2, player.y - player.height/2, player.width, player.height,
+          it.x - 15, it.y - 15, 30, 30
+        )) {
           items.splice(i, 1);
+          data.itemsCollected++;
+          if (it.type === 'shield') {
+            data.shield = true;
+          } else {
+            const old = player.bulletType;
+            player.bulletType = 'spread';
+            setTimeout(() => { if(player) player.bulletType = old; }, 10000);
+          }
+          checkAchievements(data, setUiAchievements, setNewAchievement);
           continue;
         }
 
         // 绘制道具
-        ctx.fillStyle = item.type === 'shield' ? '#ffff00' : '#ff00ff';
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = ctx.fillStyle;
-        ctx.beginPath();
-        ctx.arc(item.x, item.y, item.width/2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        // 玩家拾取
-        if (player && checkCollision(player, item)) {
-          items.splice(i, 1);
-          setStats(prev => ({ ...prev, itemsCollected: prev.itemsCollected + 1 }));
-
-          if (item.type === 'shield') {
-            gameRef.current.shield = true;
-          } else if (item.type === 'tripleShot') {
-            const oldType = player.bulletType;
-            player.bulletType = 'spread';
-            setTimeout(() => { player.bulletType = oldType; }, 10000);
-          }
-        }
+        const itColor = it.type === 'shield' ? '#00ffee' : '#ff44ff';
+        ctx.save();
+        ctx.shadowBlur = 18; ctx.shadowColor = itColor;
+        ctx.strokeStyle = itColor; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(it.x, it.y, 13, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle = itColor + '44'; ctx.fill();
+        ctx.fillStyle = itColor;
+        ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(it.type === 'shield' ? '🛡' : '⚡', it.x, it.y);
+        ctx.restore();
       }
 
-      // 检查关卡升级
-      if (score >= level * 100) {
-        setLevel(prev => prev + 1);
-        setStats(prev => ({ ...prev, level: prev.level + 1 }));
-        gameRef.current.enemies = [];
+      // ── 粒子效果 ─────────────────────────────────────────
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life--;
+        if (p.life <= 0) { particles.splice(i, 1); continue; }
+        ctx.globalAlpha = p.life / p.maxLife;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x - p.r, p.y - p.r, p.r*2, p.r*2);
+        ctx.globalAlpha = 1;
       }
 
-      // 检查成就
-      ACHIEVEMENTS.forEach(ach => {
-        if (!achievements.find(a => a.id === ach.id) && ach.condition(stats)) {
-          setAchievements(prev => [...prev, ach]);
-        }
-      });
+      // ── 生存时间 & 关卡 ───────────────────────────────────
+      data.survivalSec = Math.floor((now - data.startTime) / 1000);
+      const nextLevelScore = data.level * 150;
+      if (data.score >= nextLevelScore) {
+        data.level++;
+        data.enemies = [];
+        setUiLevel(data.level);
+        checkAchievements(data, setUiAchievements, setNewAchievement);
+        // 关卡升级提示
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,255,200,0.85)';
+        ctx.font = 'bold 36px sans-serif'; ctx.textAlign = 'center';
+        ctx.shadowBlur = 20; ctx.shadowColor = '#00ffcc';
+        ctx.fillText(`★ 关卡 ${data.level} ★`, W/2, H/2);
+        ctx.restore();
+      }
 
-      animationId = requestAnimationFrame(gameLoop);
+      localAnimId = requestAnimationFrame(loop);
+      g.current.animId = localAnimId;
     };
 
-    gameLoop();
+    localAnimId = requestAnimationFrame(loop);
+    g.current.animId = localAnimId;
 
     return () => {
-      if (animationId) cancelAnimationFrame(animationId);
+      if (localAnimId) cancelAnimationFrame(localAnimId);
     };
-  }, [gameState, score, level, lives, achievements, stats]);
+  }, [gameState]); // ★ 只依赖 gameState，不依赖任何会频繁变化的 state
 
+  // ─── 触摸控制 ────────────────────────────────────────────────
+  const handleTouch = (e) => {
+    e.preventDefault();
+    if (e.touches.length === 0) { g.current.touchTarget = null; return; }
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const t = e.touches[0];
+    const scaleX = (canvasRef.current?.width || 800) / rect.width;
+    const scaleY = (canvasRef.current?.height || 600) / rect.height;
+    g.current.touchTarget = {
+      x: (t.clientX - rect.left) * scaleX,
+      y: (t.clientY - rect.top)  * scaleY,
+    };
+  };
+
+  // ─── JSX ─────────────────────────────────────────────────────
   return (
-    <div className="w-screen h-screen bg-gradient-to-b from-space-dark via-space-blue to-space-purple overflow-hidden">
-      {/* 星空背景 */}
-      <div className="absolute inset-0 overflow-hidden">
-        {[...Array(100)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute w-1 h-1 bg-white rounded-full animate-pulse-slow"
+    <div className="w-screen h-screen bg-[#050a1a] overflow-hidden relative">
+
+      {/* 静态星空背景 */}
+      <div className="absolute inset-0 pointer-events-none">
+        {Array.from({length: 120}, (_, i) => (
+          <div key={i} className="absolute rounded-full bg-white"
             style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`
-            }}
-          />
+              width:  Math.random() < 0.1 ? 2 : 1,
+              height: Math.random() < 0.1 ? 2 : 1,
+              left: `${(i * 137.5) % 100}%`,
+              top:  `${(i * 97.3)  % 100}%`,
+              opacity: 0.3 + Math.random() * 0.7,
+              animation: `pulse ${2 + (i%3)}s ease-in-out infinite`,
+              animationDelay: `${(i * 0.07) % 3}s`,
+            }} />
         ))}
       </div>
 
-      {/* 主菜单 */}
+      {/* ══ 主菜单 ══════════════════════════════════════════════ */}
       {gameState === 'menu' && (
-        <div className="relative z-10 flex flex-col items-center justify-center h-full p-4">
-          <h1 className="text-6xl md:text-8xl font-bold text-white text-glow mb-8 animate-float">
+        <div className="relative z-10 flex flex-col items-center h-full p-4 overflow-y-auto">
+          <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 mt-8 mb-2 drop-shadow-lg tracking-widest">
             星际先锋
           </h1>
-          <p className="text-xl text-blue-200 mb-12">选择你的战机</p>
+          <p className="text-blue-300 text-sm mb-8 tracking-widest">STAR CRAFT · 选择你的战机</p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 max-w-6xl w-full">
             {Object.entries(BATTLEPLANES).map(([key, plane]) => (
-              <div
-                key={key}
-                onClick={() => startGame(key)}
-                className="glass rounded-xl p-6 cursor-pointer hover:glow transition-all transform hover:scale-105"
-              >
-                <div className="w-full h-40 flex items-center justify-center mb-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 rounded-lg">
-                  <img
-                    src={`/${key}.png`}
-                    alt={plane.name}
-                    className="max-h-full object-contain"
-                    style={{
-                      filter: 'drop-shadow(0 0 15px rgba(59, 130, 246, 0.6))',
-                      mixBlendMode: 'lighten'
-                    }}
-                  />
+              <button key={key} onClick={() => startGame(key)}
+                className="group relative rounded-2xl p-4 text-left transition-all duration-300
+                           border border-blue-500/30 bg-white/5 backdrop-blur-sm
+                           hover:border-cyan-400/80 hover:bg-white/10 hover:scale-105 hover:shadow-[0_0_30px_rgba(0,200,255,0.3)]">
+                {/* 战机图片区 */}
+                <div className="w-full h-32 flex items-center justify-center mb-3 rounded-xl bg-gradient-to-br from-blue-950/50 to-purple-950/50 overflow-hidden">
+                  <img src={`/${key}.png`} alt={plane.name}
+                    className="max-h-full max-w-full object-contain"
+                    style={{ filter: 'drop-shadow(0 0 12px rgba(0,180,255,0.7))', mixBlendMode: 'screen' }} />
                 </div>
-                <h3 className="text-2xl font-bold text-white mb-2">{plane.name}</h3>
-                <p className="text-sm text-blue-200 mb-4">{plane.subtitle}</p>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between text-white">
-                    <span>攻击力:</span>
-                    <span className="text-red-400">{plane.attack}</span>
+                <h3 className="text-base font-bold text-white mb-0.5">{plane.name}</h3>
+                <p className="text-xs text-blue-300 mb-2">{plane.subtitle}</p>
+                {/* 属性条 */}
+                <div className="space-y-1 text-xs">
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-400 w-8">攻击</span>
+                    <div className="flex-1 bg-gray-800 rounded-full h-1.5">
+                      <div className="bg-gradient-to-r from-red-500 to-orange-400 h-1.5 rounded-full transition-all"
+                        style={{width: `${plane.attack / 70 * 100}%`}} />
+                    </div>
+                    <span className="text-red-400 w-5 text-right">{plane.attack}</span>
                   </div>
-                  <div className="flex justify-between text-white">
-                    <span>血量:</span>
-                    <span className="text-green-400">{plane.health}</span>
-                  </div>
-                  <div className="mt-4 space-y-1">
-                    {plane.features.map((feature, i) => (
-                      <div key={i} className="text-xs text-blue-300">• {feature}</div>
-                    ))}
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-400 w-8">血量</span>
+                    <div className="flex-1 bg-gray-800 rounded-full h-1.5">
+                      <div className="bg-gradient-to-r from-green-500 to-emerald-400 h-1.5 rounded-full transition-all"
+                        style={{width: `${plane.health / 75 * 100}%`}} />
+                    </div>
+                    <span className="text-green-400 w-5 text-right">{plane.health}</span>
                   </div>
                 </div>
-              </div>
+                <div className="mt-2 space-y-0.5">
+                  {plane.features.map((f, i) => (
+                    <div key={i} className="text-xs text-blue-400">· {f}</div>
+                  ))}
+                </div>
+              </button>
             ))}
+          </div>
+
+          {/* 操作说明 */}
+          <div className="mt-6 mb-4 border border-blue-500/20 rounded-xl bg-white/5 backdrop-blur-sm p-4 max-w-lg w-full text-xs text-blue-300 grid grid-cols-2 gap-2">
+            <div>⌨️ 方向键 / WASD 移动</div>
+            <div>🚀 空格键 射击</div>
+            <div>⏸ P 键 暂停</div>
+            <div>📱 触摸屏自动跟随射击</div>
           </div>
         </div>
       )}
 
-      {/* 游戏界面 */}
+      {/* ══ 游戏界面 ════════════════════════════════════════════ */}
       {(gameState === 'playing' || gameState === 'paused') && (
         <div className="relative z-10 h-full flex flex-col">
-          {/* 顶部信息栏 */}
-          <div className="glass p-4 flex justify-between items-center">
-            <div className="flex gap-6 text-white">
-              <div>分数: <span className="text-yellow-400 font-bold">{score}</span></div>
-              <div>关卡: <span className="text-blue-400 font-bold">{level}</span></div>
-              <div>生命: <span className="text-red-400 font-bold">{'❤️'.repeat(lives)}</span></div>
+          {/* 顶栏 */}
+          <div className="flex items-center justify-between px-4 py-2 bg-black/40 backdrop-blur-sm border-b border-white/10">
+            <div className="flex gap-4 text-sm text-white">
+              <span>分数 <span className="text-yellow-400 font-bold">{uiScore}</span></span>
+              <span>关卡 <span className="text-cyan-400 font-bold">{uiLevel}</span></span>
+              <span>生命 <span className="text-red-400 font-bold">{'♥ '.repeat(uiLives)}</span></span>
             </div>
-            <button
-              onClick={() => setGameState(gameState === 'playing' ? 'paused' : 'playing')}
-              className="glass px-4 py-2 rounded-lg text-white hover:glow"
-            >
-              {gameState === 'playing' ? '暂停' : '继续'}
+            <button onClick={togglePause}
+              className="text-sm px-3 py-1 rounded-lg border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-colors">
+              {gameState === 'playing' ? '暂停 P' : '继续 P'}
             </button>
           </div>
 
-          {/* 游戏画布 */}
-          <div className="flex-1 flex items-center justify-center p-4">
-            <canvas
-              ref={canvasRef}
-              width={800}
-              height={600}
-              className="border-2 border-blue-500 rounded-lg glow max-w-full"
-            />
+          {/* Canvas */}
+          <div className="flex-1 flex items-center justify-center p-2 overflow-hidden">
+            <canvas ref={canvasRef} width={800} height={600}
+              className="max-w-full max-h-full rounded-xl border border-blue-500/40"
+              style={{boxShadow: '0 0 30px rgba(0,100,255,0.3)'}}
+              onTouchStart={handleTouch} onTouchMove={handleTouch} onTouchEnd={handleTouch} />
           </div>
 
-          {/* 暂停界面 */}
+          {/* 成就提示 */}
+          {newAchievement && (
+            <div className="absolute top-16 right-4 bg-yellow-500/90 text-black rounded-xl px-4 py-2 text-sm font-bold animate-bounce">
+              🏆 成就解锁：{newAchievement.name}
+            </div>
+          )}
+
+          {/* 暂停遮罩 */}
           {gameState === 'paused' && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
-              <div className="glass rounded-xl p-8 text-center">
-                <h2 className="text-4xl font-bold text-white mb-6">游戏暂停</h2>
-                <div className="space-y-4">
-                  <button
-                    onClick={() => setGameState('playing')}
-                    className="w-full glass px-6 py-3 rounded-lg text-white hover:glow"
-                  >
+            <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+              <div className="border border-white/20 rounded-2xl bg-white/10 backdrop-blur-md p-8 text-center min-w-64">
+                <h2 className="text-3xl font-bold text-white mb-6">游戏暂停</h2>
+                <div className="space-y-3">
+                  <button onClick={() => setGameState('playing')}
+                    className="w-full py-2.5 rounded-xl border border-cyan-400/60 bg-cyan-400/10 text-cyan-300 hover:bg-cyan-400/20 transition-all">
                     继续游戏
                   </button>
-                  <button
-                    onClick={() => setGameState('menu')}
-                    className="w-full glass px-6 py-3 rounded-lg text-white hover:glow"
-                  >
+                  <button onClick={() => setGameState('menu')}
+                    className="w-full py-2.5 rounded-xl border border-red-400/60 bg-red-400/10 text-red-300 hover:bg-red-400/20 transition-all">
                     返回主菜单
                   </button>
                 </div>
@@ -603,32 +620,33 @@ function App() {
         </div>
       )}
 
-      {/* 游戏结束界面 */}
+      {/* ══ 游戏结束 ════════════════════════════════════════════ */}
       {gameState === 'gameover' && (
         <div className="relative z-10 flex items-center justify-center h-full">
-          <div className="glass rounded-xl p-8 max-w-md text-center">
-            <h2 className="text-5xl font-bold text-white text-glow mb-6">游戏结束</h2>
-            <div className="space-y-4 mb-8">
-              <div className="text-2xl text-white">最终分数: <span className="text-yellow-400">{score}</span></div>
-              <div className="text-xl text-white">到达关卡: <span className="text-blue-400">{level}</span></div>
-              {achievements.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-xl text-white mb-3">获得成就:</h3>
-                  <div className="space-y-2">
-                    {achievements.map(ach => (
-                      <div key={ach.id} className="glass p-3 rounded-lg">
-                        <div className="text-yellow-400 font-bold">{ach.name}</div>
-                        <div className="text-sm text-blue-200">{ach.description}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+          <div className="border border-white/20 rounded-2xl bg-white/10 backdrop-blur-md p-8 max-w-sm w-full text-center mx-4">
+            <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-400 mb-6">
+              游戏结束
+            </h2>
+            <div className="space-y-2 text-white text-lg mb-6">
+              <div>最终分数 <span className="text-yellow-400 font-bold text-2xl">{uiScore}</span></div>
+              <div>到达关卡 <span className="text-cyan-400 font-bold">{uiLevel}</span></div>
             </div>
-            <button
-              onClick={() => setGameState('menu')}
-              className="w-full glass px-6 py-3 rounded-lg text-white hover:glow"
-            >
+            {uiAchievements.length > 0 && (
+              <div className="mb-6 text-left space-y-2">
+                <p className="text-sm text-gray-400 mb-2">获得成就：</p>
+                {uiAchievements.map(a => (
+                  <div key={a.id} className="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-1.5">
+                    <span className="text-yellow-400">🏆</span>
+                    <div>
+                      <div className="text-yellow-300 text-sm font-bold">{a.name}</div>
+                      <div className="text-gray-400 text-xs">{a.description}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setGameState('menu')}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold hover:opacity-90 transition-all">
               返回主菜单
             </button>
           </div>
@@ -638,4 +656,42 @@ function App() {
   );
 }
 
-export default App;
+// ─── 纯函数工具 ──────────────────────────────────────────────
+function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
+}
+
+function spawnParticles(particles, x, y, type) {
+  const count = type === 'heavy' ? 18 : 10;
+  const colors = type === 'heavy' ? ['#ff4400','#ff8800','#ffcc00'] :
+                 type === 'fast'  ? ['#ff00ff','#aa00ff','#ff44ff'] :
+                                    ['#ff2200','#ff6600','#ffaa00'];
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5;
+    const speed = 1.5 + Math.random() * 3;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1,
+      r: 2 + Math.random() * 3,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 20 + Math.random() * 20 | 0,
+      maxLife: 40,
+    });
+  }
+}
+
+function spawnItem(items, x, y) {
+  items.push({ x, y, type: Math.random() < 0.5 ? 'shield' : 'tripleShot' });
+}
+
+function checkAchievements(data, setUiAchievements, setNewAchievement) {
+  ACHIEVEMENTS_DEF.forEach(def => {
+    if (!data.achievements.includes(def.id) && def.check(data)) {
+      data.achievements.push(def.id);
+      setUiAchievements(prev => [...prev, def]);
+      setNewAchievement(def);
+      setTimeout(() => setNewAchievement(null), 3000);
+    }
+  });
+}
