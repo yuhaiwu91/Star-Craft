@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import * as THREE from 'three';
+import NET from 'vanta/dist/vanta.net.min';
 
 // ─── 常量配置 ───────────────────────────────────────────────
 const BATTLEPLANES = {
@@ -40,7 +42,9 @@ const ACHIEVEMENTS_DEF = [
 
 // ─── 主组件 ──────────────────────────────────────────────────
 export default function App() {
-  const canvasRef   = useRef(null);
+  const canvasRef    = useRef(null);
+  const vantaBgRef   = useRef(null);   // Vanta 挂载容器
+  const vantaEffect  = useRef(null);   // Vanta 实例
   // gameStateRef 用于在 rAF 回调中读取最新状态（无 stale closure）
   const gameStateRef = useRef('menu');
 
@@ -95,6 +99,30 @@ export default function App() {
     achievements: [],       // 已解锁 id 集合
     animId: null,
   });
+
+  // ─── Vanta.NET 背景（仅菜单页）─────────────────────────────
+  useEffect(() => {
+    if (gameState !== 'menu') {
+      vantaEffect.current?.destroy();
+      vantaEffect.current = null;
+      return;
+    }
+    if (!vantaBgRef.current || vantaEffect.current) return;
+    vantaEffect.current = NET({
+      el: vantaBgRef.current,
+      THREE,
+      color:           0x00aaff,
+      backgroundColor: 0x050a1a,
+      points:          14.0,
+      maxDistance:     24.0,
+      spacing:         18.0,
+      showDots:        true,
+    });
+    return () => {
+      vantaEffect.current?.destroy();
+      vantaEffect.current = null;
+    };
+  }, [gameState]);
 
   // ─── 预加载图片（并行，完成后才进入 menu）────────────────────
   useEffect(() => {
@@ -541,60 +569,87 @@ export default function App() {
 
       {/* ══ 主菜单 ══════════════════════════════════════════════ */}
       {gameState === 'menu' && (
-        <div className="relative z-10 flex flex-col items-center h-full p-4 overflow-y-auto">
-          <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 mt-8 mb-2 drop-shadow-lg tracking-widest">
-            星际先锋
-          </h1>
-          <p className="text-blue-300 text-sm mb-8 tracking-widest">STAR CRAFT · 选择你的战机</p>
+        <div className="relative h-full overflow-hidden">
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 max-w-6xl w-full">
-            {Object.entries(BATTLEPLANES).map(([key, plane]) => (
-              <button key={key} onClick={() => startGame(key)}
-                className="group relative rounded-2xl p-4 text-left transition-all duration-300
-                           border border-blue-500/30 bg-white/5 backdrop-blur-sm
-                           hover:border-cyan-400/80 hover:bg-white/10 hover:scale-105 hover:shadow-[0_0_30px_rgba(0,200,255,0.3)]">
-                {/* 战机图片区 */}
-                <div className="w-full h-32 flex items-center justify-center mb-3 rounded-xl bg-gradient-to-br from-blue-950/50 to-purple-950/50 overflow-hidden">
-                  <img src={`/${key}.png`} alt={plane.name}
-                    className="max-h-full max-w-full object-contain"
-                    style={{ filter: 'drop-shadow(0 0 12px rgba(0,180,255,0.7))', mixBlendMode: 'screen' }} />
-                </div>
-                <h3 className="text-base font-bold text-white mb-0.5">{plane.name}</h3>
-                <p className="text-xs text-blue-300 mb-2">{plane.subtitle}</p>
-                {/* 属性条 */}
-                <div className="space-y-1 text-xs">
-                  <div className="flex items-center gap-1">
-                    <span className="text-gray-400 w-8">攻击</span>
-                    <div className="flex-1 bg-gray-800 rounded-full h-1.5">
-                      <div className="bg-gradient-to-r from-red-500 to-orange-400 h-1.5 rounded-full transition-all"
-                        style={{width: `${plane.attack / 70 * 100}%`}} />
-                    </div>
-                    <span className="text-red-400 w-5 text-right">{plane.attack}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-gray-400 w-8">血量</span>
-                    <div className="flex-1 bg-gray-800 rounded-full h-1.5">
-                      <div className="bg-gradient-to-r from-green-500 to-emerald-400 h-1.5 rounded-full transition-all"
-                        style={{width: `${plane.health / 75 * 100}%`}} />
-                    </div>
-                    <span className="text-green-400 w-5 text-right">{plane.health}</span>
-                  </div>
-                </div>
-                <div className="mt-2 space-y-0.5">
-                  {plane.features.map((f, i) => (
-                    <div key={i} className="text-xs text-blue-400">· {f}</div>
-                  ))}
-                </div>
-              </button>
-            ))}
-          </div>
+          {/* Vanta.js 动态背景层 */}
+          <div ref={vantaBgRef} className="absolute inset-0 z-0" />
 
-          {/* 操作说明 */}
-          <div className="mt-6 mb-4 border border-blue-500/20 rounded-xl bg-white/5 backdrop-blur-sm p-4 max-w-lg w-full text-xs text-blue-300 grid grid-cols-2 gap-2">
-            <div>⌨️ 方向键 / WASD 移动</div>
-            <div>🚀 空格键 射击</div>
-            <div>⏸ P 键 暂停</div>
-            <div>📱 触摸屏自动跟随射击</div>
+          {/* 内容层 */}
+          <div className="relative z-10 flex flex-col items-center h-full p-4 overflow-y-auto">
+
+            {/* 故障霓虹标题 */}
+            <div className="relative mt-8 mb-2 select-none title-glow">
+              <h1 className="text-5xl md:text-7xl font-black tracking-widest title-gradient">
+                星际先锋
+              </h1>
+              {/* 色差残影层 */}
+              <h1 className="glitch-layer text-5xl md:text-7xl font-black tracking-widest"
+                  aria-hidden="true">
+                星际先锋
+              </h1>
+            </div>
+            <p className="text-cyan-400/80 text-sm mb-8 tracking-[0.3em] uppercase font-light">
+              Star Craft · 选择你的战机
+            </p>
+
+            {/* 战机卡片网格 */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 max-w-6xl w-full">
+              {Object.entries(BATTLEPLANES).map(([key, plane]) => (
+                <button key={key} onClick={() => startGame(key)}
+                  className="plane-card rounded-2xl p-4 text-left
+                             border border-blue-500/30 bg-black/40 backdrop-blur-sm">
+
+                  {/* 战机图片区 */}
+                  <div className="w-full h-32 flex items-center justify-center mb-3
+                                  rounded-xl bg-gradient-to-br from-blue-950/60 to-purple-950/60
+                                  border border-white/5 overflow-hidden">
+                    <img src={`/${key}.png`} alt={plane.name}
+                      className="card-img max-h-full max-w-full object-contain"
+                      style={{
+                        filter: 'drop-shadow(0 0 10px rgba(0,180,255,0.6))',
+                        mixBlendMode: 'screen',
+                      }} />
+                  </div>
+
+                  <h3 className="text-base font-bold text-white mb-0.5">{plane.name}</h3>
+                  <p className="text-xs text-cyan-400/70 mb-2">{plane.subtitle}</p>
+
+                  {/* 属性条 */}
+                  <div className="space-y-1 text-xs">
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-400 w-8">攻击</span>
+                      <div className="flex-1 bg-gray-800 rounded-full h-1.5">
+                        <div className="bg-gradient-to-r from-red-500 to-orange-400 h-1.5 rounded-full"
+                          style={{width: `${plane.attack / 70 * 100}%`}} />
+                      </div>
+                      <span className="text-red-400 w-5 text-right">{plane.attack}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-400 w-8">血量</span>
+                      <div className="flex-1 bg-gray-800 rounded-full h-1.5">
+                        <div className="bg-gradient-to-r from-green-500 to-emerald-400 h-1.5 rounded-full"
+                          style={{width: `${plane.health / 75 * 100}%`}} />
+                      </div>
+                      <span className="text-green-400 w-5 text-right">{plane.health}</span>
+                    </div>
+                  </div>
+                  <div className="mt-2 space-y-0.5">
+                    {plane.features.map((f, i) => (
+                      <div key={i} className="text-xs text-blue-400/80">· {f}</div>
+                    ))}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* 操作说明 */}
+            <div className="mt-6 mb-4 border border-blue-500/20 rounded-xl bg-black/30 backdrop-blur-sm p-4
+                            max-w-lg w-full text-xs text-blue-300/80 grid grid-cols-2 gap-2">
+              <div>⌨️ 方向键 / WASD 移动</div>
+              <div>🚀 空格键 射击</div>
+              <div>⏸ P 键 暂停</div>
+              <div>📱 触摸屏自动跟随射击</div>
+            </div>
           </div>
         </div>
       )}
