@@ -107,45 +107,40 @@ function App() {
     loadImages();
   }, []);
 
-  // 射击子弹
-  const shootBullet = () => {
-    const { player, bullets } = gameRef.current;
-    if (!player) return;
-
-    const now = Date.now();
-    if (now - (player.lastShot || 0) < 200) return;
-    player.lastShot = now;
-
-    switch (player.bulletType) {
-      case 'double':
-        bullets.push(
-          { x: player.x - 15, y: player.y, width: 4, height: 15, speed: 8, damage: player.attack },
-          { x: player.x + 15, y: player.y, width: 4, height: 15, speed: 8, damage: player.attack }
-        );
-        break;
-      case 'pierce':
-        bullets.push({ x: player.x, y: player.y, width: 6, height: 20, speed: 10, damage: player.attack, pierce: true });
-        break;
-      case 'spread':
-        bullets.push(
-          { x: player.x - 20, y: player.y, width: 4, height: 12, speed: 7, damage: player.attack, angle: -0.3 },
-          { x: player.x, y: player.y, width: 4, height: 12, speed: 7, damage: player.attack, angle: 0 },
-          { x: player.x + 20, y: player.y, width: 4, height: 12, speed: 7, damage: player.attack, angle: 0.3 }
-        );
-        break;
-      case 'homing':
-        bullets.push({ x: player.x, y: player.y, width: 5, height: 15, speed: 6, damage: player.attack, homing: true });
-        break;
-    }
-  };
-
   // 键盘事件
   useEffect(() => {
     const handleKeyDown = (e) => {
       gameRef.current.keys[e.key] = true;
       if (e.key === ' ' && gameState === 'playing') {
         e.preventDefault();
-        shootBullet();
+        const { player, bullets } = gameRef.current;
+        if (!player) return;
+
+        const now = Date.now();
+        if (now - (player.lastShot || 0) < 200) return;
+        player.lastShot = now;
+
+        switch (player.bulletType) {
+          case 'double':
+            bullets.push(
+              { x: player.x - 15, y: player.y, width: 4, height: 15, speed: 8, damage: player.attack },
+              { x: player.x + 15, y: player.y, width: 4, height: 15, speed: 8, damage: player.attack }
+            );
+            break;
+          case 'pierce':
+            bullets.push({ x: player.x, y: player.y, width: 6, height: 20, speed: 10, damage: player.attack, pierce: true });
+            break;
+          case 'spread':
+            bullets.push(
+              { x: player.x - 20, y: player.y, width: 4, height: 12, speed: 7, damage: player.attack, angle: -0.3 },
+              { x: player.x, y: player.y, width: 4, height: 12, speed: 7, damage: player.attack, angle: 0 },
+              { x: player.x + 20, y: player.y, width: 4, height: 12, speed: 7, damage: player.attack, angle: 0.3 }
+            );
+            break;
+          case 'homing':
+            bullets.push({ x: player.x, y: player.y, width: 5, height: 15, speed: 6, damage: player.attack, homing: true });
+            break;
+        }
       }
       if (e.key === 'p' || e.key === 'P') {
         setGameState(prev => prev === 'playing' ? 'paused' : 'playing');
@@ -521,8 +516,16 @@ function App() {
                 onClick={() => startGame(key)}
                 className="glass rounded-xl p-6 cursor-pointer hover:glow transition-all transform hover:scale-105"
               >
-                <div className="w-full h-40 flex items-center justify-center mb-4">
-                  <img src={`/${key}.png`} alt={plane.name} className="max-h-full object-contain mix-blend-screen" style={{filter: 'drop-shadow(0 0 10px rgba(59, 130, 246, 0.5))'}} />
+                <div className="w-full h-40 flex items-center justify-center mb-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 rounded-lg">
+                  <img
+                    src={`/${key}.png`}
+                    alt={plane.name}
+                    className="max-h-full object-contain"
+                    style={{
+                      filter: 'drop-shadow(0 0 15px rgba(59, 130, 246, 0.6))',
+                      mixBlendMode: 'lighten'
+                    }}
+                  />
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-2">{plane.name}</h3>
                 <p className="text-sm text-blue-200 mb-4">{plane.subtitle}</p>
