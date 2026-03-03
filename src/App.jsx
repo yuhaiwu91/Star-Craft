@@ -107,32 +107,6 @@ function App() {
     loadImages();
   }, []);
 
-  // 键盘事件
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      gameRef.current.keys[e.key] = true;
-      if (e.key === ' ' && gameState === 'playing') {
-        e.preventDefault();
-        shootBullet();
-      }
-      if (e.key === 'p' || e.key === 'P') {
-        setGameState(prev => prev === 'playing' ? 'paused' : 'playing');
-      }
-    };
-
-    const handleKeyUp = (e) => {
-      gameRef.current.keys[e.key] = false;
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [gameState]);
-
   // 射击子弹
   const shootBullet = () => {
     const { player, bullets } = gameRef.current;
@@ -164,6 +138,32 @@ function App() {
         break;
     }
   };
+
+  // 键盘事件
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      gameRef.current.keys[e.key] = true;
+      if (e.key === ' ' && gameState === 'playing') {
+        e.preventDefault();
+        shootBullet();
+      }
+      if (e.key === 'p' || e.key === 'P') {
+        setGameState(prev => prev === 'playing' ? 'paused' : 'playing');
+      }
+    };
+
+    const handleKeyUp = (e) => {
+      gameRef.current.keys[e.key] = false;
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [gameState]);
 
   // 生成敌机
   const spawnEnemy = () => {
@@ -522,7 +522,7 @@ function App() {
                 className="glass rounded-xl p-6 cursor-pointer hover:glow transition-all transform hover:scale-105"
               >
                 <div className="w-full h-40 flex items-center justify-center mb-4">
-                  <img src={`/${key}.png`} alt={plane.name} className="max-h-full object-contain" />
+                  <img src={`/${key}.png`} alt={plane.name} className="max-h-full object-contain mix-blend-screen" style={{filter: 'drop-shadow(0 0 10px rgba(59, 130, 246, 0.5))'}} />
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-2">{plane.name}</h3>
                 <p className="text-sm text-blue-200 mb-4">{plane.subtitle}</p>
